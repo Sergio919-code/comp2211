@@ -5,7 +5,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-data = pd.read_csv("ust_data_.csv")
+data = pd.read_csv("ust_data_.csv")    # ust_data_ has 215 human labeled data, while ust_data is the raw data without any labels 
 data["email"] = data["head"] + data["name"] + data["address"] + data["sensitivity"] + data["importance"] + data["text"]
 
 vectorizer = TfidfVectorizer(stop_words="english")
@@ -28,7 +28,7 @@ email_new = pd.DataFrame()
 email_new["label"] = pd.Series(new_arr)
 email_new["email"] = data["email"]
 
-email_new.to_csv("clean_ust_data.csv" , index=False)
+email_new.to_csv("clean_ust_data.csv" , index=False)  # clean_ust_data has 2 columns with label and email, label still needs to checked by human:)
 
 
 
