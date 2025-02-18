@@ -14,6 +14,7 @@ class Ui_MainWindow(object):
 
     def __init__(self):
         self.login_status = False
+        self.comitted = False
 
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -84,7 +85,7 @@ class Ui_MainWindow(object):
         self.commit_button.setGeometry(QtCore.QRect(112, 152, 65, 17))
         font = QtGui.QFont()
         font.setFamily("Rockwell")
-        font.setPointSize(6)
+        font.setPointSize(8)
         self.commit_button.setFont(font)
         self.commit_button.setObjectName("commit_button")
         self.spamming = QtWidgets.QPushButton(self.centralwidget)
@@ -113,6 +114,8 @@ class Ui_MainWindow(object):
         self.Main_Title.setMinimumSize(QtCore.QSize(0 , 0))
         self.Readme.setMinimumSize(QtCore.QSize(0 , 0))
         self.status_bar.setWordWrap(True)
+        self.pBar.setMinimumSize(QtCore.QSize(0 , 0))
+        self.pBar.hide()
 
         self.Readme.clicked.connect(self.readme_button_clicked)        
         self.login_button.clicked.connect(self.login_button_clicked)
@@ -125,7 +128,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Spam-Thrower"))
         self.Main_Title.setStatusTip(_translate("MainWindow", "Spam-Thrower!!!!"))
         self.Main_Title.setText(_translate("MainWindow", "Spam-Thrower!"))
         self.Readme.setStatusTip(_translate("MainWindow", "Read the instructions"))
@@ -151,7 +154,24 @@ class Ui_MainWindow(object):
     def readme_button_clicked(self):
         msg_box = QtWidgets.QMessageBox()
         msg_box.setWindowTitle("ReadMe")
-        msg_box.setText("1. Enter your email and password\n2. Enter the number of spams you want to send\n3. Click on the commit button\n4. Click on the spamming button to start spamming")
+        msg_box.setTextFormat(QtCore.Qt.RichText)
+        msg_box.setText("""
+        <h1>ReadMe</h1>
+        <h2>Instructions</h2>
+        <ol>
+            <li>Enter your email and password:</li>
+            <ul>
+                <li>For Gmail, if you turned on 2-step verification, you need to get an App password. <a href="https://support.google.com/accounts/answer/185833?hl=en">Get App Password</a></li>
+            </ul>
+            <li>Enter the number of spams you want to send</li>
+            <li>Click on the commit button</li>
+            <li>Click on the spamming button to start spamming</li>       
+        </ol>
+        <h2>Disclaimer</h2>
+        <p>This tool is for educational purposes only. Do not use it for malicious purposes.</p>"""
+
+        )
+        msg_box.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
         msg_box.setIcon(QtWidgets.QMessageBox.NoIcon)
         msg_box.exec_()
 
@@ -177,7 +197,7 @@ class Ui_MainWindow(object):
                 self.status_bar.setText("Login Successful")
             except Exception as e:
                 logging.exception(f"Validating Login. Error: {str(e)}")
-                self.status_bar.setText("Login Failed")     ### BUG
+                self.status_bar.setText("Login Failed")     
                 self.login_status = False
         # Add elif to support other email services
         else:
@@ -223,6 +243,7 @@ class Ui_MainWindow(object):
                 msg_box.setText("Committed successfully.")
                 msg_box.setIcon(QtWidgets.QMessageBox.NoIcon)
                 msg_box.exec_()
+                self.comitted = True
             else:
                 QtWidgets.QMessageBox.warning(None, "Invalid Input", "Please enter the number of spams and the target email address.")
         else:
@@ -234,6 +255,7 @@ class Ui_MainWindow(object):
 
     def all_finished(self):
         self.pBar.setValue(0)
+        self.pBar.hide()
         self.status_bar.setText("STATUS: Finished Spamming")
         self.spamming_thread.quit()
 
@@ -241,13 +263,16 @@ class Ui_MainWindow(object):
         self.status_bar.setText(f"STATUS: Failed to send email {i}")
 
     def spamming_button_clicked(self):
-        if self.login_status:
+        if self.login_status and self.comitted:
             self.pBar.setMaximum(self.num_spams)
+            self.pBar.show()
             self.spamming_thread = SpammingThread(self.num_spams , self.email , self.password , self.to_email)
             self.spamming_thread.start()
             self.spamming_thread.update_progress.connect(self.update_progress)
             self.spamming_thread.all_finished.connect(self.all_finished)
             self.spamming_thread.send_exception.connect(self.send_exception)
+        else:
+            QtWidgets.QMessageBox.warning(None , "Invalid Input" , "Please login and commit before spamming.")
 
 def retry(retries=3, delay=1):      # Retry decorator
     def decorator(func):
