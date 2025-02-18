@@ -7,6 +7,8 @@ from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
 import smtplib , threading
 
+logging.basicConfig(level=logging.DEBUG, filename="spam.log" , filemode="w" , format="%(asctime)s - %(levelname)s - %(message)s")
+
 class Ui_MainWindow(object):
 
 
@@ -115,8 +117,9 @@ class Ui_MainWindow(object):
         self.Readme.clicked.connect(self.readme_button_clicked)        
         self.login_button.clicked.connect(self.login_button_clicked)
         self.commit_button.clicked.connect(self.commit_button_clicked)
+        self.spamming.clicked.connect(self.spamming_button_clicked)
 
-
+        ### 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
@@ -164,15 +167,17 @@ class Ui_MainWindow(object):
         return self.password_input.text()
     
     def check_valid_login(self):    # Check if the login is valid
-        if "gamil" in self.email:   # run in a sub thread
+        if "gmail" in self.email:   # run in a sub thread
             try:
                 server = smtplib.SMTP(host="smtp.gmail.com" , port=587)
                 server.starttls()
                 server.login(self.email , self.password)
                 server.quit()
                 self.login_status = True
+                self.status_bar.setText("Login Successful")
             except Exception as e:
                 logging.exception(f"Validating Login. Error: {str(e)}")
+                self.status_bar.setText("Login Failed")     ### BUG
                 self.login_status = False
         # Add elif to support other email services
         else:
@@ -185,7 +190,7 @@ class Ui_MainWindow(object):
         if self.email and self.password:
             msg_box = QtWidgets.QMessageBox()
             msg_box.setWindowTitle("Login")
-            msg_box.setText("Logged in successfully.")
+            msg_box.setText("Checking Login...")
             msg_box.setIcon(QtWidgets.QMessageBox.NoIcon)
             msg_box.exec_()
             
@@ -223,10 +228,26 @@ class Ui_MainWindow(object):
         else:
             QtWidgets.QMessageBox.warning(None , "Login Required" , "Please login to your account.")
 
+    def update_progress(self):
+        self.pBar.setValue(self.pBar.value() + 1)
+        self.status_bar.setText("STATUS: Spamming...")
+
+    def all_finished(self):
+        self.pBar.setValue(0)
+        self.status_bar.setText("STATUS: Finished Spamming")
+        self.spamming_thread.quit()
+
+    def send_exception(self, i :int):
+        self.status_bar.setText(f"STATUS: Failed to send email {i}")
+
     def spamming_button_clicked(self):
         if self.login_status:
+            self.pBar.setMaximum(self.num_spams)
             self.spamming_thread = SpammingThread(self.num_spams , self.email , self.password , self.to_email)
-
+            self.spamming_thread.start()
+            self.spamming_thread.update_progress.connect(self.update_progress)
+            self.spamming_thread.all_finished.connect(self.all_finished)
+            self.spamming_thread.send_exception.connect(self.send_exception)
 
 def retry(retries=3, delay=1):      # Retry decorator
     def decorator(func):
@@ -263,9 +284,9 @@ def retry(retries=3, delay=1):      # Retry decorator
 class SpammingThread(QtCore.QThread):
     unsupport_email = QtCore.pyqtSignal()
     slow_progress = QtCore.pyqtSignal()
-    send_exception = QtCore.pyqtSignal()
+    send_exception = QtCore.pyqtSignal(int)
     update_progress = QtCore.pyqtSignal()
-
+    all_finished = QtCore.pyqtSignal()
 
     def __init__(self , num_spams , from_email , password , to_email):
         QtCore.QThread.__init__(self)
@@ -274,30 +295,44 @@ class SpammingThread(QtCore.QThread):
         self.password = password
         self.to_email = to_email
 
+        self.unsupport_email.connect(self.handle_unsupported_email)
+        self.slow_progress.connect(self.handle_slow_progress)
+
+
+
+    def handle_unsupported_email(self):
+        QtWidgets.QMessageBox.warning(None, "Unsupported Email", "The email service is not supported.")
+
+    def handle_slow_progress(self):
+        QtWidgets.QMessageBox.information(None, "Slow Progress", "Sending a large number of emails, this may take some time.")
+
+
     def run(self):
         if self.num_spams > 0 and self.num_spams <= 20:
             if "gmail" in self.email:
-                for _ in range(self.num_spams):
+                for i in range(self.num_spams):
                     subject = spam_words.get_spam(random.randint(1 , 5))
                     body = spam_words.get_spam(random.randint(10 , 20))
-                    self.a_send_email_google(subject , body , self.to_email)
+                    asyncio.run(self.a_send_email_google(subject , body , self.to_email , i))
 
+                self.all_finished.emit()
             else:
                 self.unsupport_email.emit()
 
         elif self.num_spams > 20:
             if "gmail" in self.email:
                 self.slow_progress.emit()
-                for _ in range(self.num_spams):
+                for i in range(self.num_spams):
                     subject = spam_words.get_spam(random.randint(1 , 5))
                     body = spam_words.get_spam(random.randint(10 , 20))
-                    self.send_email_google(subject , body , self.to_email)
+                    self.send_email_google(subject , body , self.to_email , i)
+                self.all_finished.emit()
             else:
                 self.unsupport_email.emit()
 
 
     @retry()
-    async def a_send_email_google(self , subject , body , to_email):
+    async def a_send_email_google(self , subject , body , to_email , i :int):
         from_email = self.email
         from_password = self.password
 
@@ -327,10 +362,10 @@ class SpammingThread(QtCore.QThread):
         
         except Exception as e:
             logging.exception(f"Failed to send email. Error: {str(e)}")
-            self.send_exception.emit()
+            self.send_exception.emit(i)
 
     @retry()
-    def send_email_google(self , subject , body , to_email):
+    def send_email_google(self , subject , body , to_email , i :int):
         from_email = self.email
         from_password = self.password
 
@@ -363,7 +398,7 @@ class SpammingThread(QtCore.QThread):
         
         except Exception as e:
             logging.exception(f"Failed to send email. Error: {str(e)}")
-            self.send_exception.emit()
+            self.send_exception.emit(i)
 
 if __name__ == "__main__":
     QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
