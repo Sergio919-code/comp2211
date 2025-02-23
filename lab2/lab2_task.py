@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.naive_bayes import CategoricalNB
+
 
 class OurImplementedNaiveBayesCategorical:
 
@@ -95,28 +95,25 @@ class OurImplementedNaiveBayesCategorical:
         """
         # YOUR CODE HERE
         # NOTE USE VECTORIEZED NUMPY FUNCTIONS. YOU MAY NOT USE NESTED FOR LOOPS
-        likelihoods = []
-        y = np.reshape(y , (len(y) , 1))
-        data = np.hstack((X , y))
-        label_col = data[: , -1]
-        classes = np.unique(label_col)
-        count = [np.sum(label_col == label) for label in classes]
-        for col_index in range(data.shape[1] - 1): #go over column
-            feature = data[: , col_index]
-            feature_categories = np.unique(feature)
-            likelihood = np.zeros((len(feature_categories) , len(classes)))
 
-            df = pd.DataFrame(np.stack((feature , label_col) , axis=1) , columns=["data" , "label"])
-            
-            for feature_index , feature_ in enumerate(feature_categories):
-                for class_index , label in enumerate(classes):
-                    select_rows = df[(df["data"] == feature_) & (df["label"] == label)]
-                    count_row = len(select_rows)
-                    probability = (count_row + self.alpha) / (count[class_index] + self.alpha * len(feature_categories)) 
-                    likelihood[feature_index , class_index] = probability   
+        likelihoods = []
+        classes , class_counts = np.unique(y , return_counts=True) # [0 , 1] , [counts , counts]
+
+        for col_index in range(X.shape[1]):
+            feature = X[: , col_index]
+            unique_feature = np.unique(feature)
+
+            likelihood = np.zeros((len(unique_feature) , len(classes)))
+            # fill the likelihood
+            for likelihood_row_index, feature_val in enumerate(unique_feature):
+                for likelihood_col_index, class_val in enumerate(classes):
+                    count = np.sum((feature == feature_val) & (y == class_val))
+                    total_num_class = class_counts[likelihood_col_index]
+                    likelihood[likelihood_row_index , likelihood_col_index] = (count + self.alpha) / (total_num_class + len(unique_feature) * self.alpha)
 
             likelihoods.append(likelihood)
-        return likelihoods  #(p(Evidence|Belief))
+
+        return likelihoods #(p(Evidence|Belief))
 
     # TODO Task 3: Compute class probabilities
     def compute_posteriors(self, priors, likelihoods, X):
@@ -142,13 +139,17 @@ class OurImplementedNaiveBayesCategorical:
         num_classes = likelihoods[0].shape[1]
         num_samples = X.shape[0]
         posteriors = np.zeros((num_samples , num_classes))  # initialize output array
+        log_priors = np.log(priors)
 
         for i , input_evidence_arr in enumerate(X):
-            posteriors[i , :] = priors
+            posteriors[i , :] = log_priors
             for j , evidence in enumerate(input_evidence_arr):
-                if j == 0:
-                    evidence -= 1
-                posteriors[i , :] *= likelihoods[j][int(evidence)]
+                #use evidence as an index, need adjusting
+                min_val = min(X[: , j])
+                adjust_evidence = int(evidence - min_val)
+                posteriors[i , :] += np.log(likelihoods[j][adjust_evidence])
+            posteriors[i , :] = np.exp(posteriors[i , :])
+            posteriors[i , :] /= np.sum(posteriors[i , :])
 
         return posteriors
     
@@ -186,11 +187,12 @@ def compute_metrics( y_test, y_pred):
         accuracy = (true_positive + true_negative) / (true_positive + true_negative + false_positive + false_negative)
         f1 = (2 * precision * recall) / (precision + recall)
 
-        return accuracy, f1, precision, recall
+        return accuracy, f1, recall , precision  #swap preciion with recall
     
 
 
 if __name__ == '__main__':
+    from sklearn.naive_bayes import CategoricalNB
     # Load data
     X_train = pd.read_csv('./lab2/data_file/X_train.csv')
     X_test = pd.read_csv('./lab2/data_file/X_test.csv')
