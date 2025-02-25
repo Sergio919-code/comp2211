@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+from sklearn.naive_bayes import CategoricalNB
+
 
 
 class OurImplementedNaiveBayesCategorical:
@@ -96,24 +98,23 @@ class OurImplementedNaiveBayesCategorical:
         # YOUR CODE HERE
         # NOTE USE VECTORIEZED NUMPY FUNCTIONS. YOU MAY NOT USE NESTED FOR LOOPS
 
-        likelihoods = []
-        classes , class_counts = np.unique(y , return_counts=True) # [0 , 1] , [counts , counts]
+        cols = [X[: , i] for i in range(X.shape[1])]    #1D good
 
-        for col_index in range(X.shape[1]):
-            feature = X[: , col_index]
-            unique_feature = np.unique(feature)
+        row_by_feature = [np.eye(np.max(col).astype(int) + 1)[col.astype(int), :] for col in cols ]
+        feature_by_row = [np.transpose(row_feature_matrix) for row_feature_matrix in row_by_feature]
 
-            likelihood = np.zeros((len(unique_feature) , len(classes)))
-            # fill the likelihood
-            for likelihood_row_index, feature_val in enumerate(unique_feature):
-                for likelihood_col_index, class_val in enumerate(classes):
-                    count = np.sum((feature == feature_val) & (y == class_val))
-                    total_num_class = class_counts[likelihood_col_index]
-                    likelihood[likelihood_row_index , likelihood_col_index] = (count + self.alpha) / (total_num_class + len(unique_feature) * self.alpha)
+        row_by_class = np.eye(np.max(y).astype(int) + 1)[y.astype(int) , :]
+        class_counts = np.array([np.sum(y == i) for i in range(np.max(y).astype(int) + 1)])
 
-            likelihoods.append(likelihood)
+        counts = [np.dot(f_by_row , row_by_class) for f_by_row in feature_by_row]
 
-        return likelihoods #(p(Evidence|Belief))
+        def calc_prob(arr : np.ndarray , class_count : np.ndarray) -> np.ndarray:
+            prob = (arr + self.alpha) / (class_count + arr.shape[0] * self.alpha)
+            return prob
+
+        likelihoods = [calc_prob(count , class_counts) for count in counts]
+
+        return likelihoods
 
     # TODO Task 3: Compute class probabilities
     def compute_posteriors(self, priors, likelihoods, X):
@@ -136,20 +137,13 @@ class OurImplementedNaiveBayesCategorical:
             2D array of posteriors for each test sample and class
         """
 
-        num_classes = likelihoods[0].shape[1]
-        num_samples = X.shape[0]
-        posteriors = np.zeros((num_samples , num_classes))  # initialize output array
-        log_priors = np.log(priors)
+        log_prior = np.log(priors)
 
-        for i , input_evidence_arr in enumerate(X):
-            posteriors[i , :] = log_priors
-            for j , evidence in enumerate(input_evidence_arr):
-                #use evidence as an index, need adjusting
-                min_val = min(X[: , j])
-                adjust_evidence = int(evidence - min_val)
-                posteriors[i , :] += np.log(likelihoods[j][adjust_evidence])
-            posteriors[i , :] = np.exp(posteriors[i , :])
-            posteriors[i , :] /= np.sum(posteriors[i , :])
+        row_by_classes_log = [np.log(likelihood[X[: , i].astype(int)]) for i , likelihood in enumerate(likelihoods)]
+
+        log_prob = np.sum(row_by_classes_log , axis=0) + log_prior
+        prob = np.exp(log_prob)
+        posteriors = prob / np.sum(prob , axis=1)[: , None]
 
         return posteriors
     
@@ -194,10 +188,10 @@ def compute_metrics( y_test, y_pred):
 if __name__ == '__main__':
     from sklearn.naive_bayes import CategoricalNB
     # Load data
-    X_train = pd.read_csv('./lab2/data_file/X_train.csv')
-    X_test = pd.read_csv('./lab2/data_file/X_test.csv')
-    y_train = pd.read_csv('./lab2/data_file/y_train.csv')
-    y_test = pd.read_csv('./lab2/data_file/y_test.csv')
+    X_train = pd.read_csv('./Lab2/X_train.csv')
+    X_test = pd.read_csv('./Lab2/X_test.csv')
+    y_train = pd.read_csv('./Lab2/y_train.csv')
+    y_test = pd.read_csv('./Lab2/y_test.csv')
 
     print(f"X_train columns: {[_ for _ in X_train.columns]}")
     print(f"y_train columns: {[_ for _ in y_train.columns]}")
@@ -242,6 +236,7 @@ if __name__ == '__main__':
     likelihoods = our_classifier.compute_likelihoods(X_train, y_train)
     print(f"Likelihoods: {likelihoods[0][0]}\n")
     """Likelihoods: [9.80392157e-14 2.50563768e-14]"""
+
 
     # Task 3: Compute class probabilities
     print("========Task 3: Compute class probabilites========")
