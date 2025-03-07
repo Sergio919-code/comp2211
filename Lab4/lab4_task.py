@@ -5,10 +5,7 @@ from sklearn import datasets
 
 
 
-iris = datasets.load_iris()
-X = iris.data
-feature_names = iris.feature_names
-df = pd.DataFrame(X , columns=feature_names)
+
 
 def preprocess_iris(df):
     """ Preprocesses only petal features (more relevant for clustering). """
@@ -19,7 +16,7 @@ def preprocess_iris(df):
     
     return X_scaled
 
-X = preprocess_iris(df)
+
 
 # ------------------
 # My Tasks
@@ -36,18 +33,17 @@ def initialize_centroids_kmeans_pp(X, k):
         centroids (ndarray): Initialized centroids of shape (k, n_features).
     """    
 
-    centroids = X[np.random.randint(0 , X.shape[0])]      #2D array
-    X_3D = X[: , np.newaxis , :]   #change it to a 3D array for calculating distance with different centroid
+    centroids = X[np.random.randint(0, X.shape[0], size=1)].reshape(1, -1)  
+    X_3D = X[:, np.newaxis, :]  # Change it to a 3D array for calculating distance with different centroid
 
-    for _ in range(1 , k):
-        Euclidean_dist = np.sum((X_3D - centroids) ** 2 , axis=2) #dist with each centriod , a 2D array
-        nearest_dist = np.min(Euclidean_dist , axis=1)  #dist to it's cloests point
+    for _ in range(1, k):
+        Euclidean_dist = np.sum((X_3D - centroids) ** 2, axis=2)  # Distance with each centroid, a 2D array
+        nearest_dist = np.min(Euclidean_dist, axis=1)  # Distance to its closest point
         probability = nearest_dist / np.sum(nearest_dist)
         
-        next_index = np.random.choice(X.shape[0] , p=probability)
+        next_index = np.random.choice(X.shape[0], p=probability)
         next_centroid = X[[next_index]]
-        centroids = np.vstack((centroids , next_centroid))
-
+        centroids = np.vstack((centroids, next_centroid))
 
     return centroids
 
@@ -82,17 +78,15 @@ def update_centroids(X, labels, k):
     Returns:
         new_centroids (ndarray): Updated centroids of shape (k, n_features).
     """
-    # TODO: Compute new centroids as the mean of assigned data points
-    new_centroids = np.zeros((k , X.shape[1]))
+    new_centroids = np.zeros((k, X.shape[1]))
     for i in range(k):
         mask = (labels == i)
         selected = X[mask]
         if selected.shape[0] == 0:
-            new_centroid = new_centroids[i]
+            new_centroid = new_centroid[i]  
         else:
-            new_centroid = np.sum(selected , axis=0) / selected.shape[0]
+            new_centroid = np.mean(selected, axis=0)
         new_centroids[i] = new_centroid
-
 
     return new_centroids
 
@@ -132,25 +126,29 @@ def k_means(X, k, max_iters=100, tol=1e-4):
 # DEBUG
 
 if __name__ == "__main__":
-    k = 3  
+    iris = datasets.load_iris()
+    X = iris.data
+    feature_names = iris.feature_names
+    df = pd.DataFrame(X , columns=feature_names)
+    X = preprocess_iris(df)
+    k = 3
     final_centroids, final_labels = k_means(X, k)
 
 
     plt.figure(figsize=(12, 6))
     
     plt.subplot(1 , 2 , 1)
-    plt.scatter(X[:, 0], X[:, 1], c=final_labels, cmap='viridis', alpha=0.7, edgecolors='k')
+    plt.scatter(X[:, 0], X[:, 1], c=final_labels, cmap='plasma', alpha=0.7, edgecolors='k')
     plt.xlabel("Sepal Length")
-    plt.ylabel("Sepal Length")
+    plt.ylabel("Sepal Width")  
     plt.title("Visualization of K-Means Clustering (Sepal Features)")
     plt.grid(True)
 
     plt.subplot(1, 2, 2)
-    plt.scatter(X[:, 2], X[:, 3], c=final_labels, cmap='viridis', alpha=0.7, edgecolors='k')
+    plt.scatter(X[:, 2], X[:, 3], c=final_labels, cmap='plasma', alpha=0.7, edgecolors='k')
     plt.xlabel("Petal Length")
-    plt.ylabel("Petal Length")
+    plt.ylabel("Petal Width")
     plt.title("Visualization of K-Means Clustering (Petal Features)")
-    # plt.legend()
     plt.grid(True)
 
     plt.show()
