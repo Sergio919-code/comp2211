@@ -198,11 +198,6 @@ def calculate_euclidean_distance(feature_train, feature_test):
     """
     Calculate the Euclidean distance between training and testing feature matrices.
 
-    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
-    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
-    You may consider using np.sqrt https://numpy.org/doc/stable/reference/generated/numpy.sqrt.html
-    You may consider using np.square https://numpy.org/doc/stable/reference/generated/numpy.square.html
-
     Parameters:
     feature_train: A 2D numpy array of shape (num_cells_train, num_proteins)
                    representing protein abundance in the training set.
@@ -223,10 +218,6 @@ def choose_nearest_neighbors(k, distance_metric, feature_train, feature_test, la
     """
     Choose the k nearest neighbors for each test cell based on the specified distance metric.
 
-    You may consider using np.argsort https://numpy.org/doc/stable/reference/generated/numpy.argsort.html
-    You may consider using np.sort https://numpy.org/doc/stable/reference/generated/numpy.sort.html
-    You may consider using np.take https://numpy.org/doc/stable/reference/generated/numpy.take.html
-
     Parameters:
     k: The number of nearest neighbors (integer).
     distance_metric: A string that can be either 'manhattan' or 'euclidean' indicating which distance metric to be used.
@@ -238,19 +229,19 @@ def choose_nearest_neighbors(k, distance_metric, feature_train, feature_test, la
     distance_k: A 2D numpy array of shape (num_cells_test, k) containing distances to the k nearest neighbors.
     top_k_labels: A 2D numpy array of shape (num_cells_test, k) containing labels of the k nearest neighbors.
     """
+    labels = np.array(labels)   # ensure it is a numpy array
 
     if distance_metric == "manhattan":
         dist = calculate_manhattan_distance(feature_train , feature_test)   #(n_cell_test, n_cell_train)
     elif distance_metric == "euclidean":
         dist = calculate_euclidean_distance(feature_train , feature_test)
     else:
-        raise TypeError("Unsupported metric type.")
+        raise ValueError(f"Unsupported metric type: {distance_metric}")
     
-    sorted_dist = np.sort(dist , axis=1)
-    distance_k = sorted_dist[: , :k]
+    sorted_indices = np.argsort(dist , axis=1)
+    index_k = sorted_indices[: , :k]
 
-    sorted_index = np.argsort(dist , axis=1)
-    index_k = sorted_index[: , :k]
+    distance_k = np.take_along_axis(dist , index_k , axis=1)
     top_k_labels = labels[index_k]
 
     return distance_k , top_k_labels
@@ -258,10 +249,6 @@ def choose_nearest_neighbors(k, distance_metric, feature_train, feature_test, la
 def count_neighbor_class(top_k_labels):
     """
     Count the number of neighbors of each class among the k nearest neighbors for each test cell.
-
-    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
-    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
-    You may consider using np.arange https://numpy.org/doc/stable/reference/generated/numpy.arange.html
 
     Parameters:
     top_k_labels: A 2D numpy array of shape (num_cells_test, k) containing labels of the k nearest neighbors.
@@ -281,8 +268,6 @@ def predict_labels(class_count):
     """
     Predict the label for each test cell based on the class counts of the k nearest neighbors.
 
-    You may consider using np.argmax https://numpy.org/doc/stable/reference/generated/numpy.argmax.html
-
     Parameters:
     class_count: A 2D numpy array of shape (num_cells_test, num_classes) representing the number of
                  data points belonging to each class among the k nearest neighbors.
@@ -295,12 +280,129 @@ def predict_labels(class_count):
 
     return pred_label
 
+def get_max_voter(class_count):
+    """
+    Determine which classes are the max voters among the k nearest neighbors for each test cell.
+
+    Parameters:
+    class_count: A 2D numpy array of shape (num_cells_test, num_classes) representing the number of
+                 data points belonging to each class among the k nearest neighbors.
+
+    Returns:
+    max_voter: A 2D numpy array of shape (num_cells_test, num_classes) where max_voter[j][i] = 1
+               if class i is a max voter for test point j, otherwise 0.
+    """
+    max_ = np.max(class_count , axis=1)
+    MASK = (class_count == max_[: , None])
+    max_voter = MASK.astype(int)
+
+    return max_voter
+
+def get_useful_labels(max_voter, top_k_labels):
+    """
+    Determine useful labels based on max voters and the labels of k nearest neighbors.
+
+    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
+    You may consider using np.max https://numpy.org/doc/stable/reference/generated/numpy.max.html
+    You may consider using np.arange https://numpy.org/doc/stable/reference/generated/numpy.arange.html
+
+    Parameters:
+    max_voter: A 2D numpy array of shape (num_cells_test, num_classes) where max_voter[j][i] = 1
+               if class i is a max voter for test point j, otherwise 0.
+    top_k_labels: A 2D numpy array of shape (num_cells_test, k) containing labels of the k nearest neighbors.
+
+    Returns:
+    useful_labels: A 3D numpy array of shape (num_cells_test, num_classes, k) where useful_labels[m][n][l] = 1
+                   if the l-th neighbor of the m-th test point belongs to class n and class n is a max voter
+                   for the m-th test point, otherwise 0.
+    """
+    _ , n_classes = max_voter.shape
+    MAX_VOTER_3D = max_voter[: , : , None]  #(n_tests , n_classes , 1)
+    class_indices = np.arange(n_classes).reshape(1 , n_classes ,1)
+    IS_CLASS_MASK = (top_k_labels[: , None , :] == class_indices) 
+    useful_labels = IS_CLASS_MASK & (MAX_VOTER_3D == 1)
+
+    return useful_labels.astype(int)
+
+def predict(distance_k, useful_labels):
+    """
+    Predict the label for each test cell based on inverse distances and useful labels.
+
+    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
+    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+    You may consider using np.argmax https://numpy.org/doc/stable/reference/generated/numpy.argmax.html
+
+    Parameters:
+    distance_k: A 2D numpy array of shape (num_cells_test, k) containing distances to the k nearest neighbors.
+    useful_labels: A 3D numpy array of shape (num_cells_test, num_classes, k) indicating whether
+                   the l-th neighbor of the m-th test point belongs to class n and is a max voter.
+
+    Returns:
+    prediction: A 1D numpy array of shape (num_cells_test,) containing the predicted label for each test cell.
+    """
+    DIST_3D = distance_k[: , None , :]  #(n_tests , 1 , k)
+    USEFUL_DIST = DIST_3D  * useful_labels
+    WEIGHTED = np.divide(1 , USEFUL_DIST , out=np.zeros_like(USEFUL_DIST , dtype=float) , where=USEFUL_DIST != 0)
+
+    weighted_sum = np.sum(WEIGHTED , axis=2)
+    prediction = np.argmax(weighted_sum , axis=1)
+
+    return prediction
+
+def KNN(k, distance_metric, feature_train, feature_test, labels):
+    """
+    Perform k-Nearest Neighbors classification.
+
+    Parameters:
+    k: The number of nearest neighbors (integer).
+    distance_metric: A string that can be either 'euclidean' or 'manhattan' indicating which distance metric to be used.
+    feature_train: A 2D numpy array of shape (num_cells_train, num_proteins) representing protein abundance in the training set.
+    feature_test: A 2D numpy array of shape (num_cells_test, num_proteins) representing protein abundance in the testing set.
+    labels: A 1D numpy array of shape (num_cells_train,) containing labels of each cell in the training set.
+
+    Returns:
+    prediction: A 1D numpy array of shape (num_cells_test,) containing the predicted label for each test cell.
+    """
+    distance_k , top_k_labels = choose_nearest_neighbors(k , distance_metric , feature_train , feature_test , labels)
+    class_count = count_neighbor_class(top_k_labels)
+    max_voter = get_max_voter(class_count)
+    
+    useful_labels = get_useful_labels(max_voter , top_k_labels)
+    pred = predict(distance_k , useful_labels)
+
+    return pred
+
+def get_accuracy(prediction, ground_truth):
+    """
+    Calculate the accuracy of the KNN classifier.
+
+    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+    You may consider using array.size https://numpy.org/doc/stable/reference/generated/numpy.ndarray.size.html
+
+    Parameters:
+    prediction: A 1D numpy array of shape (num_cells_test,) containing predicted labels for each test cell.
+    ground_truth: A 1D numpy array of shape (num_cells_test,) containing the true labels for each test cell.
+
+    Returns:
+    accuracy: A float representing the accuracy of the KNN classifier (between 0 and 1).
+    """
+
+    true_pred = np.sum((prediction == ground_truth).astype(int))
+    length = ground_truth.shape[0]
+
+    accuracy = true_pred / length
+
+    return accuracy
+
+
 if __name__ == "__main__":
 
-    example_count = np.array([[2, 1, 0, 1], [2, 1, 1, 0]])
-    result = predict_labels(class_count=example_count)
+    example_prediction = np.array([1, 2, 1, 2])
+    example_truth = np.array([1, 1, 1, 1])
+    result = get_accuracy(prediction=example_prediction, ground_truth=example_truth)
     print(result)
-    # You are expected to get [0,0]
+    # You are expected to get 0.5
+
     exit()
 
 
